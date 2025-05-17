@@ -4,7 +4,7 @@ import tiktoken
 from typing import Tuple
 from model.utils import *
 import time
-import signal
+import threading
 from pathlib import Path
 import replicate
 import google.generativeai as genai
@@ -37,111 +37,12 @@ class LLM:
         :return: Tuple containing the output, input token cost, and output token cost
         """
         output = ""
-        if "gemini" in self.online_model_name:
-            output = self.infer_with_gemini(message)
-        elif "claude" in self.online_model_name:
-            output = self.infer_claude(message)
-        elif "gpt" in self.online_model_name:
+        if "gpt" in self.online_model_name:
             output = self.infer_with_openai_model(message)
 
         input_token_cost = 0 if not is_measure_cost else len(self.encoding.encode(self.systemRole)) + len(self.encoding.encode(message))
         output_token_cost = 0 if not is_measure_cost else len(self.encoding.encode(output))
         return output, input_token_cost, output_token_cost
-
-    # Inference with Gemini
-    def infer_with_gemini(self, message: str) -> str:
-        """
-        Perform inference using the Gemini model.
-        :param message: The input message for the model
-        :return: The output from the model
-        """
-        def timeout_handler(signum, frame):
-            raise TimeoutError("ChatCompletion timeout")
-
-        def simulate_ctrl_c(signal, frame):
-            raise KeyboardInterrupt("Simulating Ctrl+C")
-
-        gemini_model = genai.GenerativeModel('gemini-pro')
-        signal.signal(signal.SIGALRM, timeout_handler)
-
-        received = False
-        tryCnt = 0
-        while not received:
-            tryCnt += 1
-            time.sleep(2)
-            try:
-                signal.alarm(50)  # Set a timeout of 50 seconds
-                message = self.systemRole + "\n" + message
-
-                safety_settings = [
-                    {"category": "HARM_CATEGORY_DANGEROUS", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                ]
-
-                response = gemini_model.generate_content(
-                    message,
-                    safety_settings=safety_settings,
-                    generation_config=genai.types.GenerationConfig(temperature=self.temperature)
-                )
-                signal.alarm(0)  # Cancel the timeout
-                output = response.text
-                return output
-            except TimeoutError:
-                received = False
-                simulate_ctrl_c(None, None)  # Simulate Ctrl+C effect
-            except KeyboardInterrupt:
-                received = False
-                continue
-            except Exception:
-                return ""
-            if tryCnt > 5:
-                return ""
-
-    # Inference with Claude
-    def infer_claude(self, message: str) -> str:
-        """
-        Perform inference using the Claude model.
-        :param message: The input message for the model
-        :return: The output from the model
-        """
-        def timeout_handler(signum, frame):
-            raise TimeoutError("ChatCompletion timeout")
-
-        def simulate_ctrl_c(signal, frame):
-            raise KeyboardInterrupt("Simulating Ctrl+C")
-
-        input = [
-            {"role": "system", "content": self.systemRole},
-            {"role": "user", "content": message},
-        ]
-        signal.signal(signal.SIGALRM, timeout_handler)
-
-        received = False
-        tryCnt = 0
-        while not received:
-            tryCnt += 1
-            time.sleep(2)
-            try:
-                signal.alarm(60)  # Set a timeout of 60 seconds
-                openai.api_key = self.openai_key
-                response = openai.ChatCompletion.create(
-                    model=self.online_model_name, messages=input, temperature=self.temperature
-                )
-                signal.alarm(0)  # Cancel the timeout
-                output = response.choices[0].message.content
-                return output
-            except TimeoutError:
-                received = False
-                simulate_ctrl_c(None, None)  # Simulate Ctrl+C effect
-            except KeyboardInterrupt:
-                return ""
-            except Exception:
-                received = False
-            if tryCnt > 5:
-                return ""
 
     # Inference with OpenAI Model
     def infer_with_openai_model(self, message: str) -> str:
@@ -150,12 +51,6 @@ class LLM:
         :param message: The input message for the model
         :return: The output from the model
         """
-        def timeout_handler(signum, frame):
-            raise TimeoutError("ChatCompletion timeout")
-
-        def simulate_ctrl_c(signal, frame):
-            raise KeyboardInterrupt("Simulating Ctrl+C")
-
         model_input = [
             {"role": "system", "content": self.systemRole},
             {"role": "user", "content": message},
@@ -165,26 +60,53 @@ class LLM:
         tryCnt = 0
         output = ""
 
-        signal.signal(signal.SIGALRM, timeout_handler)
+        def run_with_timeout(timeout, func, *args):
+            result = [None]
+            exception = [None]
+
+            def target():
+                try:
+                    result[0] = func(*args)
+                except Exception as e:
+                    exception[0] = e
+
+            thread = threading.Thread(target=target)
+            thread.daemon = True
+            thread.start()
+            thread.join(timeout)
+            
+            if thread.is_alive():
+                # Timeout occurred
+                return None, TimeoutError("ChatCompletion timeout")
+            if exception[0] is not None:
+                raise exception[0]
+            return result[0], None
+
         while not received:
             tryCnt += 1
             time.sleep(2)
             try:
-                signal.alarm(100)  # Set a timeout of 100 seconds
-
                 # OpenAI version: 24.0
                 # Use OpenAI official APIs
-                client = OpenAI(api_key=self.openai_key)
-                response = client.chat.completions.create(
-                    model=self.online_model_name, messages=model_input, temperature=self.temperature
-                )
+                def call_openai():
+                    client = OpenAI(api_key=self.openai_key)
+                    response = client.chat.completions.create(
+                        model=self.online_model_name, messages=model_input, temperature=self.temperature
+                    )
+                    return response.choices[0].message.content
 
-                signal.alarm(0)  # Cancel the timeout
-                output = response.choices[0].message.content
+                # Run with a 100-second timeout
+                result, error = run_with_timeout(100, call_openai)
+                
+                if error:
+                    if isinstance(error, TimeoutError):
+                        received = False
+                        raise KeyboardInterrupt("Simulating Ctrl+C")
+                    raise error
+                
+                output = result
+                received = True
                 break
-            except TimeoutError:
-                received = False
-                simulate_ctrl_c(None, None)  # Simulate Ctrl+C effect
             except KeyboardInterrupt:
                 output = ""
                 break
@@ -192,4 +114,5 @@ class LLM:
                 received = False
             if tryCnt > 5:
                 output = ""
+                break
         return output
