@@ -34,12 +34,10 @@ def stream_llmsan(
     :param analysis_mode: Analysis mode for the detection model
     :param neural_sanitize_strategy: Dictionary of neural check strategies
     :param is_measure_token_cost: Flag to measure token cost
-    :return: Dictionary containing the count of each type of sanitization
     """
     cnt = 0
     case_name = file_name.replace(".java", "")
-    yield json.dumps({"status": "started", "message": f"Analyzing {case_name}"}) + "\n"
-
+    yield json.dumps({"stage": "started", "message": f"Analyzing {case_name}"}) + "\n"
 
     is_detected = False
     log_dir_path = str(
@@ -72,7 +70,7 @@ def stream_llmsan(
 
     new_code = obfuscate(source_code)
     lined_new_code = add_line_numbers(new_code)
-    yield json.dumps({"status": "code_processed", "message": "Code obfuscated and line numbers added"}) + "\n"
+    yield json.dumps({"stage": "code_processed", "message": "Code obfuscated and line numbers added"}) + "\n"
 
     total_traces = []
 
@@ -93,8 +91,7 @@ def stream_llmsan(
                 is_measure_token_cost
             )
             
-            yield json.dumps({"status": "detection", "output": output}) + "\n"
-
+            yield json.dumps({"stage": "detection", "output": output}) + "\n"
 
             bug_num, traces, first_report = parse_bug_report(output)
             if len(traces) == bug_num:
@@ -125,8 +122,6 @@ def stream_llmsan(
         with open(output_json_file_name, "w") as file:
             json.dump(existing_result, file, indent=4)
 
-        yield json.dumps({"status": "detection_saved", "file": str(output_json_file_name)}) + "\n"
-
     else:
         for json_file_name in existing_json_file_names:
             with open(json_file_name) as existing_json_file:
@@ -139,7 +134,6 @@ def stream_llmsan(
                     traces = []
 
                 total_traces.extend(traces)
-            yield json.dumps({"status": "loaded_existing", "file": json_file_name}) + "\n"
 
     ts_analyzer = TSAnalyzer(case_name, source_code, new_code, code_in_support_files)
     passes = Passes(sanitization_online_model_name, sanitization_key, spec_file_name)
@@ -174,52 +168,63 @@ def stream_llmsan(
         cnt_dict["total"] += 1
         cnt_dict_in_single_trace["total"] += 1
 
-        yield json.dumps({"status": "analyzing_trace", "trace": str(trace)}) + "\n"
+        yield json.dumps({"stage": "analyzing_trace", "trace": trace}) + "\n"
 
-        try:
-            syntactic_check_result = passes.type_sanitize(ts_analyzer, trace)
-            if syntactic_check_result:
-                cnt_dict["type_sanitize"] += 1
-                cnt_dict_in_single_trace["type_sanitize"] += 1
+        syntactic_check_result = passes.type_sanitize(ts_analyzer, trace)
 
-            functionality_sanitize_result, function_check_output_results = (
-                passes.functionality_sanitize(ts_analyzer, trace, is_measure_token_cost)
-                if neural_sanitize_strategy["functionality_sanitize"] else (True, {})
-            )
-            if functionality_sanitize_result:
-                cnt_dict["functionality_sanitize"] += 1
-                cnt_dict_in_single_trace["functionality_sanitize"] += 1
-            with open(sanitization_log_file_dir + "/" + case_name + "_" + str(trace_cnt)
-                    + "_functionality_sanitize.json", "w") as file:
-                json.dump(function_check_output_results, file, indent=4)
+        yield json.dumps({"stage": "type_sanitize", "result": syntactic_check_result}) + "\n"
 
-            order_sanitize_result = passes.order_sanitize(ts_analyzer, trace)
-            if order_sanitize_result:
-                cnt_dict["order_sanitize"] += 1
-                cnt_dict_in_single_trace["order_sanitize"] += 1
+        if syntactic_check_result:
+            cnt_dict["type_sanitize"] += 1
+            cnt_dict_in_single_trace["type_sanitize"] += 1
 
-            reachability_sanitize_result, reachability_sanitize_output_results = (
-                passes.reachability_sanitize(ts_analyzer, trace, is_measure_token_cost)
-                if neural_sanitize_strategy["reachability_sanitize"] else (True, {})
-            )
-            if reachability_sanitize_result:
-                cnt_dict["reachability_sanitize"] += 1
-                cnt_dict_in_single_trace["reachability_sanitize"] += 1
-            with open(sanitization_log_file_dir + "/" + case_name + "_" + str(trace_cnt)
-                    + "_reachability_sanitize.json", "w") as file:
-                json.dump(reachability_sanitize_output_results, file, indent=4)
+        functionality_sanitize_result, function_check_output_results = (
+            passes.functionality_sanitize(ts_analyzer, trace, is_measure_token_cost)
+            if neural_sanitize_strategy["functionality_sanitize"] else (True, {})
+        )
 
-            if syntactic_check_result and functionality_sanitize_result and order_sanitize_result and reachability_sanitize_result:
-                cnt_dict["final"] += 1
-                cnt_dict_in_single_trace["final"] += 1
-                
-            trace_check_results.append({
-                "trace": trace,
-                "result": cnt_dict_in_single_trace
-            })
-            yield json.dumps({"status": "trace_result", "result": cnt_dict_in_single_trace}) + "\n"
-        except Exception as e:
-            yield json.dumps({"status": "error", "message": f"Error analyzing trace {trace}: {str(e)}"}) + "\n"
+        yield json.dumps({"stage": "functionality_sanitize", "result": functionality_sanitize_result, "reason": function_check_output_results}) + "\n"
+
+        if functionality_sanitize_result:
+            cnt_dict["functionality_sanitize"] += 1
+            cnt_dict_in_single_trace["functionality_sanitize"] += 1
+
+        with open(sanitization_log_file_dir + "/" + case_name + "_" + str(trace_cnt)
+                + "_functionality_sanitize.json", "w") as file:
+            json.dump(function_check_output_results, file, indent=4)
+
+        order_sanitize_result = passes.order_sanitize(ts_analyzer, trace)
+        if order_sanitize_result:
+            cnt_dict["order_sanitize"] += 1
+            cnt_dict_in_single_trace["order_sanitize"] += 1
+
+
+        yield json.dumps({"stage": "order_sanitize", "result": order_sanitize_result}) + "\n"
+
+        reachability_sanitize_result, reachability_sanitize_output_results = (
+            passes.reachability_sanitize(ts_analyzer, trace, is_measure_token_cost)
+            if neural_sanitize_strategy["reachability_sanitize"] else (True, {})
+        )
+
+        yield json.dumps({"stage": "reachability_sanitize", "result": reachability_sanitize_result, "reason": reachability_sanitize_output_results}) + "\n"
+
+        if reachability_sanitize_result:
+            cnt_dict["reachability_sanitize"] += 1
+            cnt_dict_in_single_trace["reachability_sanitize"] += 1
+        with open(sanitization_log_file_dir + "/" + case_name + "_" + str(trace_cnt)
+                + "_reachability_sanitize.json", "w") as file:
+            json.dump(reachability_sanitize_output_results, file, indent=4)
+
+        if syntactic_check_result and functionality_sanitize_result and order_sanitize_result and reachability_sanitize_result:
+            cnt_dict["final"] += 1
+            cnt_dict_in_single_trace["final"] += 1
+            
+        trace_check_results.append({
+            "trace": trace,
+            "result": cnt_dict_in_single_trace
+        })
+
+        yield json.dumps({"stage": "trace_result", "result": cnt_dict_in_single_trace}) + "\n"
 
     output_results = {
         "original code": source_code,
@@ -231,4 +236,4 @@ def stream_llmsan(
     with open(output_json_file_name, "w") as file:
         json.dump(output_results, file, indent=4)
 
-    yield json.dumps({"status": "completed", "final_result": cnt_dict}) + "\n"
+    yield json.dumps({"stage": "completed", "final_result": cnt_dict}) + "\n"
