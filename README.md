@@ -1,6 +1,6 @@
 # LLMSAN: Bug Detection with Large Language Models and Data-Flow Sanitization
 
-LLMSAN is a research-oriented tool designed for detecting and sanitizing software bugs using Large Language Models (LLMs) with minimal token overhead. It combines static analysis with prompt-based LLM reasoning to reduce false positives in bug reports.
+**LLMSAN** is a research-oriented tool designed for detecting and sanitizing software bugs using Large Language Models (LLMs) with minimal token overhead. It combines static analysis with prompt-based LLM reasoning to reduce false positives in bug reports.
 
 ## Installation
 
