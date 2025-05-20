@@ -1,0 +1,5 @@
+{
+  "meta_prompts": [
+    "You are an expert Java programmer. Your task is to analyze a Java code snippet, identify bugs using provided analysis logs, and generate fixed code with annotations.\nAnnotations:\n- // [!code ++]: Mark new or corrected lines.\n- // [!code --]: Mark lines to be removed or replaced.\n\n**Original Code:**\n```java\n{original_code}\n```\n\n**Bug Type:** {bug_type}\n\n**Analysis Log:**\n{trace_check_results}\n\n**Instructions:**\n1. Review the original code and analysis log.\n2. Identify buggy lines (1-based) and bug details from the log.\n3. Fix each bug based on the bug type and log. If details are missing, infer a fix (e.g., for 'dbz', check for zero denominators).\n4. Output the modified code, keeping original lines unless they need changes.\n5. Use // [!code --] for removed/replaced lines and // [!code ++] for new/corrected lines.\n6. If no bugs are found, add // [!code ++] No bugs found.\n7. Ensure the code is syntactically correct and functional.\n8. Output only the annotated Java code, without explanations or code fences."
+  ]
+}

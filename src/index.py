@@ -1,16 +1,17 @@
 import json
 from pathlib import Path
-import shutil
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from model.llm import LLM
 from pipeline import stream_llmsan
 from model.utils import *
+import uvicorn
 
 app = FastAPI()
 
+
 @app.post("/api/analysis")
-async def analysis(file: UploadFile = File(...), model_name: str = "gpt-4.1-mini", bug_type: str = "dbz" ):
+async def analysis(file: UploadFile, model_name: str, bug_type: str):
     specs = ["dbz.json", "npd.json", "xss.json", "ci.json", "apt.json"]
 
     bug_type_id = {"dbz": 0, "npd": 1, "xss": 2, "ci": 3, "apt": 4}.get(bug_type, -1)
@@ -39,9 +40,8 @@ async def analysis(file: UploadFile = File(...), model_name: str = "gpt-4.1-mini
 
     return StreamingResponse(response)
 
-
-@app.post("/api/fix")
-async def fix_code(file_name: str, model_name: str = "gpt-4.1-mini", bug_type: str = "dbz"):
+@app.post("/api/sanitize")
+async def sanitize_code(file_name: str, model_name: str = "gpt-4.1-mini", bug_type: str = "dbz"):
     log_dir = Path(__file__).resolve().parent.parent / "log" / "llmsan" / "sanitization" / model_name
 
     case_name = file_name.replace(".java", "")
@@ -56,7 +56,7 @@ async def fix_code(file_name: str, model_name: str = "gpt-4.1-mini", bug_type: s
 
     llm = LLM(online_model_name=model_name, openai_key=standard_key, temperature=0.7)
 
-    prompt_file = Path(__file__).resolve().parent / "prompt" / "fix.json"
+    prompt_file = Path(__file__).resolve().parent / "prompt" / "santize.json"
 
     with open(prompt_file, "r") as f:
         prompt_data = json.load(f)
@@ -71,14 +71,10 @@ async def fix_code(file_name: str, model_name: str = "gpt-4.1-mini", bug_type: s
         trace_check_results=json.dumps(trace_check_results, indent=2)
     )
 
-    fixed_code, _, _ = llm.infer(prompt)
+    sanitized_code, _, _ = llm.infer(prompt)
 
-    if not fixed_code.strip():
-        return PlainTextResponse("Failed to generate fixed code", status_code=500)
-    
-    return PlainTextResponse(fixed_code)
+    return PlainTextResponse(sanitized_code)
 
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run("index:app", host="0.0.0.0", port=8000, reload=True)

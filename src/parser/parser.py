@@ -62,7 +62,7 @@ def parse_bug_report(output: str) -> Tuple[Optional[int], List[List[Tuple[int, s
                 if line_number_str.isdigit():
                     trace.append((int(line_number_str), var_name_str))
             traces.append(trace)
-    return bug_num, traces, "\n".join(report_lines)
+    return bug_num, traces, report_lines
 
 
 def parse_neural_sanitizer_output(output: str) -> bool:

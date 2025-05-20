@@ -70,7 +70,6 @@ def stream_llmsan(
 
     new_code = obfuscate(source_code)
     lined_new_code = add_line_numbers(new_code)
-    yield json.dumps({"stage": "code_processed", "message": "Code obfuscated and line numbers added"}) + "\n"
 
     total_traces = []
 
@@ -91,7 +90,7 @@ def stream_llmsan(
                 is_measure_token_cost
             )
             
-            yield json.dumps({"stage": "detection", "output": output}) + "\n"
+            yield json.dumps({"stage": "detection", "output": parse_bug_report(output)}) + "\n"
 
             bug_num, traces, first_report = parse_bug_report(output)
             if len(traces) == bug_num:

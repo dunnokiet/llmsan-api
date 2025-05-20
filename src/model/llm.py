@@ -1,12 +1,10 @@
 from openai import *
-import sys
 import tiktoken
 from typing import Tuple
 from model.utils import *
 import time
 import threading
 from pathlib import Path
-import replicate
 import google.generativeai as genai
 
 
@@ -37,6 +35,7 @@ class LLM:
         :return: Tuple containing the output, input token cost, and output token cost
         """
         output = ""
+        
         if "gpt" in self.online_model_name:
             output = self.infer_with_openai_model(message)
 
