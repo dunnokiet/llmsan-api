@@ -7,7 +7,7 @@
 1. Clone the repository:
     ```bash
     git clone https://github.com/dunnokiet/llmsan-api.git
-    cd llmsan-fork
+    cd llmsan-api
     ```
 
 2. Install the required dependencies:
