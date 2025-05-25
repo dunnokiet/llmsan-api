@@ -54,7 +54,7 @@ async def sanitize_code(file_name: str, model_name: str = "gpt-4.1-mini", bug_ty
     original_code = log_data.get("original code", "")
     trace_check_results = log_data.get("trace_check_results", [])
 
-    llm = LLM(online_model_name=model_name, openai_key=standard_key, temperature=0.7)
+    llm = LLM(online_model_name=model_name, openai_key=standard_key, temperature=0.3)
 
     prompt_file = Path(__file__).resolve().parent / "prompt" / "santize.json"
 
